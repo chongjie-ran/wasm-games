@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Snake WASM</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  background: #111;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  font-family: 'Courier New', monospace;
+  color: #fff;
+}
+#hud {
+  display: flex;
+  gap: 24px;
+  margin-bottom: 12px;
+  font-size: 16px;
+  letter-spacing: 1px;
+}
+#hud span { color: #0f0; }
+#gameCanvas {
+  border: 2px solid #0a0;
+  background: #000;
+  display: block;
+}
+#overlay {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: rgba(0,0,0,0.85);
+  padding: 32px 48px;
+  text-align: center;
+  border: 1px solid #0a0;
+  display: none;
+}
+#overlay h2 { color: #0f0; margin-bottom: 16px; }
+#overlay p { color: #ccc; margin-bottom: 8px; white-space: pre-line; }
+#overlay .keys { margin-top: 16px; color: #888; font-size: 14px; }
+#status { margin-top: 10px; font-size: 13px; color: #555; }
+</style>
+</head>
+<body>
+<div id="hud">
+  SCORE: <span id="score">0</span>
+  &nbsp;|&nbsp;
+  HIGH: <span id="highScore">0</span>
+  &nbsp;|&nbsp;
+  LENGTH: <span id="length">0</span>
+</div>
+<canvas id="gameCanvas"></canvas>
+<div id="overlay">
+  <h2 id="overlayTitle">SNAKE</h2>
+  <p id="overlayMsg">Press SPACE or ENTER to start</p>
+  <div class="keys">
+    Arrow Keys / WASD to move<br>
+    P to Pause &nbsp; R to Restart
+  </div>
+</div>
+<div id="status">Loading WASM...</div>
+<script src="snake.js"></script>
+<script>
+const CELL_SIZE = 20;
+const GRID_W = 40;
+const GRID_H = 30;
+const CANVAS_W = GRID_W * CELL_SIZE;
+const CANVAS_H = GRID_H * CELL_SIZE;
+
+const canvas = document.getElementById('gameCanvas');
+canvas.width = CANVAS_W;
+canvas.height = CANVAS_H;
+const ctx = canvas.getContext('2d');
+
+const STATE_MENU = 0, STATE_PLAYING = 1, STATE_PAUSED = 2, STATE_GAMEOVER = 3;
+const DIR_UP = 0, DIR_DOWN = 1, DIR_LEFT = 2, DIR_RIGHT = 3;
+
+let Module = null;
+let gameState = STATE_MENU;
+
+function updateHUD() {
+  document.getElementById('score').textContent = Module._wasm_get_score();
+  document.getElementById('highScore').textContent = Module._wasm_get_high_score();
+  document.getElementById('length').textContent = Module._wasm_get_snake_length();
+}
+
+function render() {
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+  
+  // Grid
+  ctx.strokeStyle = '#0a0a0a';
+  ctx.lineWidth = 0.5;
+  for (let x = 0; x <= CANVAS_W; x += CELL_SIZE) {
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, CANVAS_H); ctx.stroke();
+  }
+  for (let y = 0; y <= CANVAS_H; y += CELL_SIZE) {
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(CANVAS_W, y); ctx.stroke();
+  }
+  
+  // Food
+  if (Module._wasm_get_food_active()) {
+    const fx = Module._wasm_get_food_x();
+    const fy = Module._wasm_get_food_y();
+    ctx.fillStyle = '#f44';
+    ctx.beginPath();
+    ctx.arc(fx + CELL_SIZE/2, fy + CELL_SIZE/2, CELL_SIZE/2 - 2, 0, Math.PI*2);
+    ctx.fill();
+    ctx.fillStyle = '#faa';
+    ctx.beginPath();
+    ctx.arc(fx + CELL_SIZE/2 - 3, fy + CELL_SIZE/2 - 3, 3, 0, Math.PI*2);
+    ctx.fill();
+  }
+  
+  // Snake
+  const len = Module._wasm_get_snake_length();
+  for (let i = len - 1; i >= 0; i--) {
+    const sx = Module._wasm_get_snake_segment_x(i);
+    const sy = Module._wasm_get_snake_segment_y(i);
+    if (sx < 0) continue;
+    if (i === 0) {
+      ctx.fillStyle = '#0f0';
+      ctx.fillRect(sx + 1, sy + 1, CELL_SIZE - 2, CELL_SIZE - 2);
+      ctx.fillStyle = '#0a0';
+      ctx.fillRect(sx + 4, sy + 4, 4, 4);
+      ctx.fillRect(sx + 12, sy + 4, 4, 4);
+    } else {
+      const ratio = i / len;
+      const g = Math.floor(200 - ratio * 100);
+      ctx.fillStyle = `rgb(0,${g},0)`;
+      ctx.fillRect(sx + 1, sy + 1, CELL_SIZE - 2, CELL_SIZE - 2);
+    }
+  }
+}
+
+function updateOverlay() {
+  const overlay = document.getElementById('overlay');
+  const title = document.getElementById('overlayTitle');
+  const msg = document.getElementById('overlayMsg');
+  
+  if (gameState === STATE_MENU) {
+    overlay.style.display = 'block';
+    title.textContent = 'SNAKE';
+    msg.textContent = 'Press SPACE or ENTER to start';
+  } else if (gameState === STATE_GAMEOVER) {
+    overlay.style.display = 'block';
+    title.textContent = 'GAME OVER';
+    msg.textContent = 'Score: ' + Module._wasm_get_score() + '  |  High: ' + Module._wasm_get_high_score() + '\nPress R or SPACE to restart';
+  } else if (gameState === STATE_PAUSED) {
+    overlay.style.display = 'block';
+    title.textContent = 'PAUSED';
+    msg.textContent = 'Press P to resume';
+  } else {
+    overlay.style.display = 'none';
+  }
+}
+
+let lastTimestamp = 0;
+function gameLoop(timestamp) {
+  if (!Module) { requestAnimationFrame(gameLoop); return; }
+  
+  const dt = (timestamp - lastTimestamp);
+  lastTimestamp = timestamp;
+  
+  Module._wasm_update(dt);
+  gameState = Module._wasm_get_game_state();
+  
+  updateHUD();
+  render();
+  updateOverlay();
+  requestAnimationFrame(gameLoop);
+}
+
+document.addEventListener('keydown', (e) => {
+  if (!Module) return;
+  
+  if (e.code === 'Space' || e.code === 'Enter') {
+    e.preventDefault();
+    if (gameState === STATE_MENU || gameState === STATE_GAMEOVER) {
+      Module._wasm_start_game();
+    }
+  }
+  if (e.code === 'KeyR') {
+    if (gameState === STATE_GAMEOVER || gameState === STATE_PLAYING) {
+      Module._wasm_start_game();
+    }
+  }
+  if (e.code === 'KeyP') {
+    if (gameState === STATE_PLAYING || gameState === STATE_PAUSED) {
+      Module._wasm_toggle_pause();
+    }
+  }
+  if (gameState === STATE_PLAYING) {
+    if (e.code === 'ArrowUp' || e.code === 'KeyW') {
+      e.preventDefault();
+      Module._wasm_set_direction(DIR_UP);
+    } else if (e.code === 'ArrowDown' || e.code === 'KeyS') {
+      e.preventDefault();
+      Module._wasm_set_direction(DIR_DOWN);
+    } else if (e.code === 'ArrowLeft' || e.code === 'KeyA') {
+      e.preventDefault();
+      Module._wasm_set_direction(DIR_LEFT);
+    } else if (e.code === 'ArrowRight' || e.code === 'KeyD') {
+      e.preventDefault();
+      Module._wasm_set_direction(DIR_RIGHT);
+    }
+  }
+});
+
+SnakeModule({ locateFile: f => f }).then(m => {
+  Module = m;
+  Module._wasm_init();
+  document.getElementById('status').textContent = 'WASM loaded. Press SPACE to start.';
+  document.getElementById('overlay').style.display = 'block';
+  gameState = STATE_MENU;
+  requestAnimationFrame(gameLoop);
+}).catch(e => {
+  document.getElementById('status').textContent = 'Error: ' + e.message;
+});
+</script>
+</body>
+</html>
