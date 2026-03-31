@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Frogger - WASM Edition</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #1a1a2e;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    font-family: 'Courier New', monospace;
+    color: #eee;
+  }
+  h1 { color: #4ade80; margin-bottom: 8px; font-size: 1.5rem; }
+  #hud {
+    display: flex;
+    gap: 24px;
+    margin-bottom: 8px;
+    font-size: 0.9rem;
+    color: #aaa;
+  }
+  #hud span { color: #fbbf24; font-weight: bold; }
+  canvas {
+    border: 3px solid #4ade80;
+    border-radius: 4px;
+    display: block;
+    image-rendering: pixelated;
+  }
+  #controls {
+    margin-top: 12px;
+    color: #888;
+    font-size: 0.8rem;
+    text-align: center;
+  }
+  #msg {
+    margin-top: 8px;
+    font-size: 1rem;
+    font-weight: bold;
+    height: 20px;
+    color: #fbbf24;
+  }
+  #overlay {
+    position: absolute;
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0,0,0,0.85);
+    border-radius: 4px;
+    padding: 20px;
+  }
+  #overlay h2 { color: #4ade80; margin-bottom: 12px; }
+  #overlay p { color: #fbbf24; margin-bottom: 8px; }
+  #overlay button {
+    background: #4ade80;
+    color: #1a1a2e;
+    border: none;
+    padding: 8px 24px;
+    font-family: inherit;
+    font-size: 1rem;
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: bold;
+  }
+  #overlay button:hover { background: #22c55e; }
+</style>
+</head>
+<body>
+<h1>🐸 FROGGER — WASM Edition</h1>
+<div id="hud">
+  <div>LIVES: <span id="lives">3</span></div>
+  <div>SCORE: <span id="score">0</span></div>
+  <div>TIME: <span id="time">60</span></div>
+  <div>HOMES: <span id="homes">0</span>/5</div>
+</div>
+<div style="position:relative">
+  <canvas id="c"></canvas>
+  <div id="overlay">
+    <h2 id="ovTitle">GAME OVER</h2>
+    <p id="ovMsg">Score: 0</p>
+    <button onclick="restartGame()">PLAY AGAIN</button>
+  </div>
+</div>
+<div id="controls">
+  Arrow Keys / WASD to move | R to restart
+</div>
+<div id="msg"></div>
+
+<script>
+var Module = {
+  onRuntimeInitialized: function() {
+    console.log('Frogger WASM loaded!');
+    initGame();
+  }
+};
+</script>
+<script src="frogger.js"></script>
+<script>
+// Colors
+const COL_ROAD = '#374151';
+const COL_GRASS = '#166534';
+const COL_WATER = '#1e40af';
+const COL_FROG = '#4ade80';
+const COL_LOG = '#92400e';
+const COL_CAR = ['#ef4444','#f97316','#eab308','#a855f7'];
+const COL_HOME = '#fbbf24';
+const COL_SAFE = '#065f46';
+
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+
+let CELL, GRID_W, GRID_H;
+let lastTime = 0;
+let running = true;
+let gameOverShown = false;
+
+function initGame() {
+  CELL = Module._get_cell();
+  GRID_W = Module._get_grid_w();
+  GRID_H = Module._get_grid_h();
+  canvas.width = GRID_W * CELL;
+  canvas.height = GRID_H * CELL;
+  Module._init_game();
+  lastTime = performance.now();
+  gameOverShown = false;
+  document.getElementById('overlay').style.display = 'none';
+  running = true;
+  requestAnimationFrame(gameLoop);
+}
+
+function restartGame() {
+  initGame();
+}
+
+function gameLoop(ts) {
+  const dt = (ts - lastTime) / 1000;
+  lastTime = ts;
+
+  if (running && dt < 0.1) {
+    Module._update_game(dt);
+  }
+
+  render();
+  updateHUD();
+
+  const state = Module._get_game_state();
+  if (state === 3) { // GAMEOVER
+    running = false;
+    if (!gameOverShown) {
+      gameOverShown = true;
+      showOverlay('GAME OVER', 'Final Score: ' + Module._get_score());
+    }
+  } else if (state === 2) { // WIN
+    running = false;
+    if (!gameOverShown) {
+      gameOverShown = true;
+      showOverlay('YOU WIN! 🎉', 'Score: ' + Module._get_score());
+    }
+  }
+
+  requestAnimationFrame(gameLoop);
+}
+
+function showOverlay(title, msg) {
+  document.getElementById('ovTitle').textContent = title;
+  document.getElementById('ovMsg').textContent = msg;
+  document.getElementById('overlay').style.display = 'flex';
+}
+
+function updateHUD() {
+  document.getElementById('lives').textContent = Module._get_frog_lives();
+  document.getElementById('score').textContent = Module._get_score();
+  document.getElementById('time').textContent = Module._get_time_left();
+  document.getElementById('homes').textContent = Module._get_homes_filled();
+}
+
+function render() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // Draw rows
+  for (let row = 0; row < GRID_H; row++) {
+    for (let col = 0; col < GRID_W; col++) {
+      const x = col * CELL;
+      const y = row * CELL;
+
+      if (row >= 1 && row <= 5) {
+        // Road lanes (cars)
+        ctx.fillStyle = COL_ROAD;
+        ctx.fillRect(x, y, CELL, CELL);
+        // Road lines
+        if (col === 0) {
+          ctx.fillStyle = '#fbbf24';
+          ctx.fillRect(x, y + CELL - 2, CELL * GRID_W, 2);
+        }
+      } else if (row === 6) {
+        // Safe grass strip
+        ctx.fillStyle = COL_GRASS;
+        ctx.fillRect(x, y, CELL, CELL);
+      } else if (row >= 7 && row <= 11) {
+        // Water lanes (logs)
+        ctx.fillStyle = COL_WATER;
+        ctx.fillRect(x, y, CELL, CELL);
+      } else if (row === 12) {
+        // Bottom safe zone
+        ctx.fillStyle = COL_GRASS;
+        ctx.fillRect(x, y, CELL, CELL);
+      }
+
+      // Home zones at top row
+      if (row === 0) {
+        const safe = Module._get_safe_zone(col);
+        if (safe) {
+          ctx.fillStyle = COL_HOME;
+          ctx.fillRect(x + 4, y + 4, CELL - 8, CELL - 8);
+        } else {
+          ctx.fillStyle = COL_GRASS;
+          ctx.fillRect(x, y, CELL, CELL);
+        }
+      }
+    }
+  }
+
+  // Draw logs (obstacles that are logs)
+  const logCount = Module._get_log_count();
+  for (let i = 0; i < logCount; i++) {
+    if (!Module._get_log_active(i)) continue;
+    const x = Module._get_log_x(i);
+    const y = Module._get_log_y(i);
+    const row = Math.round(y / CELL);
+
+    ctx.fillStyle = COL_LOG;
+    ctx.beginPath();
+    ctx.roundRect(x, y + 2, CELL * 3, CELL - 4, 4);
+    ctx.fill();
+
+    // Log texture
+    ctx.strokeStyle = '#78350f';
+    ctx.lineWidth = 1;
+    for (let j = 0; j < 3; j++) {
+      ctx.beginPath();
+      ctx.moveTo(x + j * CELL + 8, y + 4);
+      ctx.lineTo(x + j * CELL + 8, y + CELL - 4);
+      ctx.stroke();
+    }
+  }
+
+  // Draw vehicles
+  const obsCount = Module._get_obs_count();
+  for (let i = 0; i < obsCount; i++) {
+    if (!Module._get_obs_active(i)) continue;
+    const x = Module._get_obs_x(i);
+    const y = Module._get_obs_y(i);
+    const colorIdx = i % COL_CAR.length;
+
+    ctx.fillStyle = COL_CAR[colorIdx];
+    ctx.beginPath();
+    ctx.roundRect(x + 2, y + 4, CELL * 2 - 4, CELL - 8, 3);
+    ctx.fill();
+
+    // Windows
+    ctx.fillStyle = '#93c5fd';
+    ctx.fillRect(x + CELL * 0.3, y + 8, CELL * 0.5, CELL - 16);
+    ctx.fillRect(x + CELL * 1.2, y + 8, CELL * 0.5, CELL - 16);
+  }
+
+  // Draw frog
+  if (Module._get_frog_alive()) {
+    const fx = Module._get_frog_x();
+    const fy = Module._get_frog_y();
+
+    // Invincibility flash
+    const invincible = Module._get_invincible_timer();
+    if (!invincible || Math.floor(Date.now() / 100) % 2 === 0) {
+      ctx.fillStyle = COL_FROG;
+      ctx.beginPath();
+      ctx.arc(fx + CELL / 2, fy + CELL / 2, CELL * 0.4, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Eyes
+      ctx.fillStyle = '#fff';
+      ctx.beginPath();
+      ctx.arc(fx + CELL * 0.35, fy + CELL * 0.3, 4, 0, Math.PI * 2);
+      ctx.arc(fx + CELL * 0.65, fy + CELL * 0.3, 4, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#000';
+      ctx.beginPath();
+      ctx.arc(fx + CELL * 0.35, fy + CELL * 0.3, 2, 0, Math.PI * 2);
+      ctx.arc(fx + CELL * 0.65, fy + CELL * 0.3, 2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+}
+
+// Keyboard controls
+document.addEventListener('keydown', function(e) {
+  switch(e.key) {
+    case 'ArrowUp':    case 'w': case 'W': Module._move_frog(1); e.preventDefault(); break;
+    case 'ArrowDown':  case 's': case 'S': Module._move_frog(2); e.preventDefault(); break;
+    case 'ArrowLeft':  case 'a': case 'A': Module._move_frog(3); e.preventDefault(); break;
+    case 'ArrowRight': case 'd': case 'D': Module._move_frog(4); e.preventDefault(); break;
+    case 'r': case 'R': restartGame(); break;
+  }
+});
+</script>
+</body>
+</html>
