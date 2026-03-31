@@ -30,9 +30,9 @@
   }
   .games-grid {
     display: grid;
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: repeat(3, 1fr);
     gap: 20px;
-    max-width: 700px;
+    max-width: 900px;
   }
   .game-card {
     background: #12122a;
@@ -69,13 +69,18 @@
 </head>
 <body>
 <h1>🎮 WASM ARCADE</h1>
-<p class="subtitle">4 Games · Built with Raylib + Emscripten + Canvas 2D</p>
+<p class="subtitle">5 Games · Built with Raylib + Emscripten + Canvas 2D</p>
 
 <div class="games-grid">
   <a class="game-card" href="frogger/">
     <h2>Frogger</h2>
     <p>Cross the road and river.<br>5 homes to reach. 3 lives.</p>
     <span class="tag">← → A D Move · SPACE Jump</span>
+  </a>
+  <a class="game-card" href="snake/">
+    <h2>Snake</h2>
+    <p>Eat food. Grow longer.<br>Don't hit walls or yourself.</p>
+    <span class="tag">Arrow Keys / WASD</span>
   </a>
   <a class="game-card" href="pacman/">
     <h2>Pac-Man</h2>
