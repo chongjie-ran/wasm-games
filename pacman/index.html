@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pac-Man - WASM Edition</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #000;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    font-family: 'Courier New', monospace;
+    color: #fff;
+  }
+  #hud {
+    display: flex;
+    gap: 32px;
+    margin-bottom: 8px;
+    font-size: 14px;
+    color: #fff;
+  }
+  #hud span { color: #ffff00; font-weight: bold; }
+  canvas {
+    border: 2px solid #0000ff;
+    border-radius: 4px;
+    display: block;
+    image-rendering: pixelated;
+  }
+  #controls {
+    margin-top: 10px;
+    color: #888;
+    font-size: 12px;
+    text-align: center;
+  }
+  #overlay {
+    position: absolute;
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0,0,0,0.85);
+    z-index: 10;
+  }
+  #overlay h2 { color: #ff0000; font-size: 2rem; margin-bottom: 12px; }
+  #overlay p { color: #ffff00; font-size: 1rem; margin-bottom: 8px; }
+  #overlay button {
+    margin-top: 12px;
+    padding: 8px 24px;
+    font-size: 1rem;
+    background: #ffff00;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-family: inherit;
+  }
+  #overlay button:hover { background: #ffaa00; }
+  .menu-btn {
+    padding: 10px 32px;
+    font-size: 1.1rem;
+    background: #ffff00;
+    border: 2px solid #ff8800;
+    border-radius: 6px;
+    cursor: pointer;
+    font-family: inherit;
+    font-weight: bold;
+    color: #000;
+    margin: 4px;
+  }
+  .menu-btn:hover { background: #ffaa00; }
+</style>
+</head>
+<body>
+<div style="position:relative">
+  <div id="overlay">
+    <h2 id="ov-title">GAME OVER</h2>
+    <p id="ov-score">Score: 0</p>
+    <p id="ov-msg"></p>
+    <button id="ov-btn" onclick="restartGame()">Play Again</button>
+  </div>
+</div>
+<div id="hud">
+  <div>Score: <span id="score">0</span></div>
+  <div>Lives: <span id="lives">3</span></div>
+  <div>Level: <span id="level">1</span></div>
+  <div>Dots: <span id="dots">0</span></div>
+</div>
+<canvas id="c"></canvas>
+<div id="controls">
+  Arrow Keys / WASD to move &nbsp;|&nbsp; P to pause &nbsp;|&nbsp; R to restart
+</div>
+
+<script>
+var Module = {
+  onRuntimeInitialized: function() {
+    initGame(1);
+    requestAnimationFrame(loop);
+  }
+};
+
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+
+const CELL = 16;
+const COLS = Module._get_cols();
+const ROWS = Module._get_rows();
+canvas.width  = COLS * CELL;
+canvas.height = ROWS * CELL;
+
+const PAC_R = CELL * 0.4;
+const GHOST_R = CELL * 0.4;
+
+let lastTime = 0;
+let gameOverShown = false;
+let paused = false;
+
+const GHOST_COLORS = ['#ff5555', '#ffb8ff', '#00ffff', '#ffb852'];
+const GHOST_NAMES  = ['Blinky', 'Pinky', 'Inky', 'Clyde'];
+
+function initGame(level) {
+  Module._init_game(level);
+  gameOverShown = false;
+  document.getElementById('overlay').style.display = 'none';
+  paused = false;
+}
+
+function restartGame() {
+  initGame(1);
+  gameOverShown = false;
+}
+
+function loop(ts) {
+  const dt = Math.min(ts - lastTime, 50);
+  lastTime = ts;
+
+  const state = Module._get_game_state();
+  // 0=menu, 1=playing, 2=win, 3=gameover, 4=paused
+
+  if (state === 1 && !paused) {
+    Module._update_game(dt);
+  }
+
+  render(state);
+  updateHUD();
+
+  if ((state === 3 || state === 2) && !gameOverShown) {
+    showOverlay(state);
+    gameOverShown = true;
+  }
+
+  requestAnimationFrame(loop);
+}
+
+function showOverlay(state) {
+  const ov = document.getElementById('overlay');
+  const title = document.getElementById('ov-title');
+  const msg   = document.getElementById('ov-msg');
+  const btn   = document.getElementById('ov-btn');
+  const score = Module._get_score();
+
+  document.getElementById('ov-score').textContent = 'Score: ' + score;
+
+  if (state === 3) {
+    title.textContent = 'GAME OVER';
+    msg.textContent = '';
+    btn.textContent = 'Try Again';
+    btn.onclick = restartGame;
+  } else if (state === 2) {
+    title.textContent = 'YOU WIN!';
+    msg.textContent = 'Level ' + Module._get_level() + ' cleared!';
+    btn.textContent = 'Next Level';
+    btn.onclick = () => {
+      initGame(Module._get_level() + 1);
+      gameOverShown = false;
+    };
+  }
+  ov.style.display = 'flex';
+  ov.style.left = canvas.offsetLeft + 'px';
+  ov.style.top  = canvas.offsetTop  + 'px';
+  ov.style.width  = canvas.width  + 'px';
+  ov.style.height = canvas.height + 'px';
+}
+
+function updateHUD() {
+  document.getElementById('score').textContent = Module._get_score();
+  document.getElementById('lives').textContent = Module._get_lives();
+  document.getElementById('level').textContent = Module._get_level();
+  document.getElementById('dots').textContent = Module._get_dots_eaten();
+}
+
+function render(state) {
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  // Board
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      const cell = Module._get_board_cell(r, c);
+      const x = c * CELL, y = r * CELL;
+
+      if (cell === 35) { // '#' wall
+        ctx.fillStyle = '#2121de';
+        ctx.fillRect(x + 1, y + 1, CELL - 2, CELL - 2);
+      } else if (cell === 46) { // '.' dot
+        ctx.fillStyle = '#ffb8ae';
+        ctx.beginPath();
+        ctx.arc(x + CELL / 2, y + CELL / 2, 2, 0, Math.PI * 2);
+        ctx.fill();
+      } else if (cell === 111) { // 'o' power pellet
+        ctx.fillStyle = '#ffb8ae';
+        ctx.beginPath();
+        ctx.arc(x + CELL / 2, y + CELL / 2, 4, 0, Math.PI * 2);
+        ctx.fill();
+      } else if (cell === 45) { // '-' tunnel
+        ctx.fillStyle = '#000';
+        ctx.fillRect(x, y, CELL, CELL);
+      }
+    }
+  }
+
+  // Ghosts
+  for (let i = 0; i < 4; i++) {
+    const gx = Module._get_ghost_x(i);
+    const gy = Module._get_ghost_y(i);
+    const frightened = Module._get_ghost_frightened(i);
+    const eaten = Module._get_ghost_eaten(i);
+    const type = Module._get_ghost_type(i);
+
+    if (eaten) continue;
+
+    let color = GHOST_COLORS[type];
+    if (frightened) color = '#2121de';
+
+    const frTimer = Module._get_frightened_timer();
+    if (frightened && frTimer < 2000) {
+      // Flashing
+      if (Math.floor(Date.now() / 200) % 2 === 0) color = '#ffffff';
+      else color = '#2121de';
+    }
+
+    const cx = gx + CELL / 2;
+    const cy = gy + CELL / 2;
+
+    // Ghost body
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.arc(cx, cy - 2, GHOST_R, Math.PI, 0);
+    ctx.lineTo(cx + GHOST_R, cy + GHOST_R);
+    // Wavy bottom
+    const steps = 3;
+    for (let w = 0; w < steps; w++) {
+      const wx = cx + GHOST_R - (w + 0.5) * (2 * GHOST_R / steps);
+      ctx.quadraticCurveTo(wx, cy + GHOST_R + 3, wx - GHOST_R / steps, cy + GHOST_R);
+    }
+    ctx.closePath();
+    ctx.fill();
+
+    // Eyes
+    if (!frightened) {
+      ctx.fillStyle = '#fff';
+      ctx.beginPath();
+      ctx.arc(cx - 3, cy - 2, 3, 0, Math.PI * 2);
+      ctx.arc(cx + 3, cy - 2, 3, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#000';
+      const dir = Module._get_ghost_dir(i);
+      const edx = [0, 0, -1, 1][dir] || 0;
+      const edy = [-1, 1, 0, 0][dir] || 0;
+      ctx.beginPath();
+      ctx.arc(cx - 3 + edx, cy - 2 + edy, 1.5, 0, Math.PI * 2);
+      ctx.arc(cx + 3 + edx, cy - 2 + edy, 1.5, 0, Math.PI * 2);
+      ctx.fill();
+    } else {
+      // Frightened face
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(cx - 4, cy + 1, 2, 2);
+      ctx.fillRect(cx + 2, cy + 1, 2, 2);
+    }
+  }
+
+  // Pac-Man
+  const px = Module._get_pacman_x();
+  const py = Module._get_pacman_y();
+  const pdir = Module._get_pacman_dir();
+  const cx = px + CELL / 2;
+  const cy = py + CELL / 2;
+
+  // Mouth angle based on direction
+  const mouthAngle = 0.25;
+  let startAngle = 0, endAngle = 0;
+  switch (pdir) {
+    case 2: startAngle = mouthAngle; endAngle = 2 * Math.PI - mouthAngle; break; // RIGHT
+    case 3: startAngle = Math.PI + mouthAngle; endAngle = Math.PI - mouthAngle; break; // LEFT
+    case 1: startAngle = Math.PI / 2 + mouthAngle; endAngle = Math.PI / 2 - mouthAngle + 2 * Math.PI; break; // DOWN
+    case 4: startAngle = -Math.PI / 2 + mouthAngle; endAngle = -Math.PI / 2 - mouthAngle; break; // UP
+    default: startAngle = 0; endAngle = 2 * Math.PI;
+  }
+
+  ctx.fillStyle = '#ffff00';
+  ctx.beginPath();
+  ctx.arc(cx, cy, PAC_R, startAngle, endAngle, pdir !== 0);
+  ctx.lineTo(cx, cy);
+  ctx.closePath();
+  ctx.fill();
+
+  // Lives display at top-left
+  for (let l = 0; l < Module._get_lives() - 1; l++) {
+    ctx.fillStyle = '#ffff00';
+    ctx.beginPath();
+    ctx.arc(10 + l * 20, 10, 6, 0.2, 2 * Math.PI - 0.2);
+    ctx.lineTo(10 + l * 20, 10);
+    ctx.fill();
+  }
+}
+
+// Input
+document.addEventListener('keydown', function(e) {
+  const state = Module._get_game_state();
+  if (state !== 1) return;
+
+  switch (e.key) {
+    case 'ArrowUp':    case 'w': case 'W': Module._set_dir(1); e.preventDefault(); break;
+    case 'ArrowDown':  case 's': case 'S': Module._set_dir(2); e.preventDefault(); break;
+    case 'ArrowLeft':  case 'a': case 'A': Module._set_dir(3); e.preventDefault(); break;
+    case 'ArrowRight': case 'd': case 'D': Module._set_dir(4); e.preventDefault(); break;
+    case 'p': case 'P': paused = !paused; break;
+    case 'r': case 'R': restartGame(); break;
+  }
+});
+</script>
+<script src="pacman.js"></script>
+</body>
+</html>
