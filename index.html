@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WASM Arcade — Raylib + Emscripten</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0a0a1a;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    font-family: 'Courier New', monospace;
+    color: #e0e0e0;
+  }
+  h1 {
+    color: #4a9eff;
+    font-size: 2.4rem;
+    margin-bottom: 8px;
+    letter-spacing: 4px;
+  }
+  .subtitle {
+    color: #666;
+    font-size: 0.9rem;
+    margin-bottom: 36px;
+    letter-spacing: 2px;
+  }
+  .games-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 20px;
+    max-width: 700px;
+  }
+  .game-card {
+    background: #12122a;
+    border: 1px solid #2a2a5a;
+    border-radius: 12px;
+    padding: 24px;
+    text-align: center;
+    text-decoration: none;
+    color: #e0e0e0;
+    transition: border-color 0.2s, transform 0.2s;
+  }
+  .game-card:hover {
+    border-color: #4a9eff;
+    transform: translateY(-3px);
+  }
+  .game-card h2 { color: #4a9eff; font-size: 1.3rem; margin-bottom: 8px; }
+  .game-card p { color: #888; font-size: 0.8rem; line-height: 1.4; }
+  .game-card .tag {
+    display: inline-block;
+    background: #1a1a3a;
+    color: #4a9eff;
+    border-radius: 4px;
+    padding: 2px 8px;
+    font-size: 0.7rem;
+    margin-top: 8px;
+  }
+  footer {
+    margin-top: 36px;
+    color: #444;
+    font-size: 0.75rem;
+    letter-spacing: 1px;
+  }
+</style>
+</head>
+<body>
+<h1>🎮 WASM ARCADE</h1>
+<p class="subtitle">4 Games · Built with Raylib + Emscripten + Canvas 2D</p>
+
+<div class="games-grid">
+  <a class="game-card" href="frogger/">
+    <h2>Frogger</h2>
+    <p>Cross the road and river.<br>5 homes to reach. 3 lives.</p>
+    <span class="tag">← → A D Move · SPACE Jump</span>
+  </a>
+  <a class="game-card" href="pacman/">
+    <h2>Pac-Man</h2>
+    <p>Eat all dots. Avoid ghosts.<br>4 ghost AI behaviors.</p>
+    <span class="tag">Arrow Keys / WASD · P Pause</span>
+  </a>
+  <a class="game-card" href="space-invaders/">
+    <h2>Space Invaders</h2>
+    <p>Defend against 5 waves.<br>4 alien types. Boss wave.</p>
+    <span class="tag">← → A D Move · SPACE Shoot</span>
+  </a>
+  <a class="game-card" href="breakout/">
+    <h2>Breakout</h2>
+    <p>Smash all bricks.<br>5 brick rows. 3 lives.</p>
+    <span class="tag">← → A/D Move · SPACE Launch</span>
+  </a>
+</div>
+
+<footer>chongjie-ran / wasm-games · CC0 License</footer>
+</body>
+</html>
