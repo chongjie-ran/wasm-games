@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Space Invaders - WASM Edition</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0a0a1a;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh;
+    font-family: 'Courier New', monospace;
+    color: #eee;
+  }
+  #hud {
+    display: flex;
+    gap: 40px;
+    margin-bottom: 8px;
+    font-size: 1.1rem;
+    width: 800px;
+    justify-content: space-between;
+  }
+  #hud span { color: #4ade80; }
+  #gameCanvas {
+    border: 2px solid #4ade80;
+    background: #000;
+    display: block;
+  }
+  #controls {
+    margin-top: 10px;
+    font-size: 0.85rem;
+    color: #888;
+    text-align: center;
+  }
+  #controls span { color: #4ade80; }
+  #overlay {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    text-align: center;
+    display: none;
+  }
+  #overlay h2 { font-size: 2.5rem; margin-bottom: 10px; }
+  #overlay p { font-size: 1.1rem; color: #aaa; }
+  .game-over { color: #ef4444 !important; }
+  .victory { color: #4ade80 !important; }
+  #wrapper { position: relative; }
+</style>
+</head>
+<body>
+<h1 style="color:#4ade80;margin-bottom:8px;font-size:1.5rem;">🚀 SPACE INVADERS - WASM</h1>
+<div id="hud">
+  <div>SCORE: <span id="score">0</span></div>
+  <div>WAVE: <span id="wave">1</span></div>
+  <div>LIVES: <span id="lives">3</span></div>
+  <div>ALIENS: <span id="aliens">32</span></div>
+</div>
+<div id="wrapper">
+  <canvas id="gameCanvas" width="800" height="600"></canvas>
+  <div id="overlay">
+    <h2 id="overlayTitle">GAME OVER</h2>
+    <p id="overlayMsg">Press R to restart</p>
+  </div>
+</div>
+<div id="controls">
+  <span>← →</span> or <span>A D</span> Move &nbsp;|&nbsp;
+  <span>SPACE</span> Shoot &nbsp;|&nbsp;
+  <span>R</span> Restart &nbsp;|&nbsp;
+  <span>P</span> Pause
+</div>
+
+<script>
+var Module = {
+  onRuntimeInitialized: function() {
+    initGame();
+  }
+};
+
+function initGame() {
+  Module._init_game();
+  overlay.style.display = 'none';
+  lastTime = performance.now();
+  paused = false;
+  requestAnimationFrame(gameLoop);
+}
+
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+const overlay = document.getElementById('overlay');
+const overlayTitle = document.getElementById('overlayTitle');
+const overlayMsg = document.getElementById('overlayMsg');
+
+const SCREEN_W = 800, SCREEN_H = 600;
+const PLAYER_W = 50, PLAYER_H = 30, ALIEN_W = 35, ALIEN_H = 25;
+const BULLET_W = 4, BULLET_H = 15;
+const ALIEN_COLS = 8, ALIEN_ROWS = 4;
+const MAX_BULLETS = 20, MAX_ENEMY_BULLETS = 10;
+
+let lastTime = 0;
+let paused = false;
+let animFrame = 0;
+
+const ALIEN_COLORS = ['#ef4444', '#f97316', '#eab308', '#22c55e'];
+const stars = Array.from({length: 60}, () => ({
+  x: Math.random() * SCREEN_W,
+  y: Math.random() * SCREEN_H * 0.7,
+  size: Math.random() * 1.5 + 0.5,
+  alpha: Math.random() * 0.5 + 0.3
+}));
+
+function drawStars() {
+  stars.forEach(s => {
+    ctx.fillStyle = `rgba(255,255,255,${s.alpha})`;
+    ctx.fillRect(s.x, s.y, s.size, s.size);
+  });
+}
+
+function drawPlayer(x, y) {
+  const cx = x + PLAYER_W / 2, cy = y + PLAYER_H / 2;
+  ctx.fillStyle = '#4ade80';
+  ctx.fillRect(x + 5, cy, PLAYER_W - 10, PLAYER_H / 2);
+  ctx.fillStyle = '#22c55e';
+  ctx.fillRect(cx - 8, cy - 5, 16, 8);
+  ctx.fillStyle = '#4ade80';
+  ctx.fillRect(x, y + PLAYER_H / 2, 12, PLAYER_H / 2);
+  ctx.fillRect(x + PLAYER_W - 12, y + PLAYER_H / 2, 12, PLAYER_H / 2);
+  ctx.fillRect(cx - 2, y, 4, 8);
+}
+
+function drawAlien(x, y, type, exploding) {
+  if (exploding) {
+    ctx.fillStyle = '#fbbf24';
+    ctx.beginPath();
+    ctx.arc(x + ALIEN_W/2, y + ALIEN_H/2, ALIEN_W * 0.5, 0, Math.PI * 2);
+    ctx.fill();
+    return;
+  }
+  const color = ALIEN_COLORS[type];
+  const cx = x + ALIEN_W / 2;
+  const cy = y + ALIEN_H / 2;
+  const flip = animFrame % 2 === 0 ? 1 : -1;
+  ctx.fillStyle = color;
+  ctx.fillRect(x + 5, cy - 4, ALIEN_W - 10, 8);
+  ctx.fillRect(x + 2, cy - 8, ALIEN_W - 4, 6);
+  ctx.fillStyle = '#000';
+  ctx.fillRect(x + 8, cy - 6, 4, 4);
+  ctx.fillRect(x + ALIEN_W - 12, cy - 6, 4, 4);
+  ctx.fillStyle = color;
+  ctx.fillRect(x + 2, cy + 4, 4, 6 + flip * 2);
+  ctx.fillRect(x + ALIEN_W - 6, cy + 4, 4, 6 - flip * 2);
+  ctx.fillRect(x + 8, cy + 6, 3, 4 + flip);
+  ctx.fillRect(x + ALIEN_W - 11, cy + 6, 3, 4 - flip);
+}
+
+function drawBullet(x, y, isEnemy) {
+  ctx.fillStyle = isEnemy ? '#ef4444' : '#4ade80';
+  ctx.fillRect(x, y, BULLET_W, BULLET_H);
+  ctx.fillStyle = isEnemy ? 'rgba(239,68,68,0.3)' : 'rgba(74,222,128,0.3)';
+  ctx.fillRect(x - 2, y, BULLET_W + 4, BULLET_H);
+}
+
+function drawHUD() {
+  document.getElementById('score').textContent = Module._get_score();
+  document.getElementById('wave').textContent = Module._get_wave();
+  document.getElementById('lives').textContent = Module._get_lives();
+  document.getElementById('aliens').textContent = Module._get_alive_count();
+}
+
+function drawOverlay(state) {
+  overlay.style.display = 'block';
+  if (state === 1) {
+    overlayTitle.textContent = 'GAME OVER';
+    overlayTitle.className = 'game-over';
+    overlayMsg.textContent = 'Press R to restart';
+  } else if (state === 2) {
+    overlayTitle.textContent = '🎉 VICTORY! 🎉';
+    overlayTitle.className = 'victory';
+    overlayMsg.textContent = 'All 5 waves cleared! Press R to play again';
+  }
+}
+
+function gameLoop(timestamp) {
+  const dt = Math.min((timestamp - lastTime) / 1000, 0.05);
+  lastTime = timestamp;
+  animFrame++;
+
+  const state = Module._get_game_state();
+  if (state === 0 && !paused) Module._update_game(dt);
+
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, SCREEN_W, SCREEN_H);
+
+  drawStars();
+
+  ctx.strokeStyle = '#4ade80';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(0, SCREEN_H - 40);
+  ctx.lineTo(SCREEN_W, SCREEN_H - 40);
+  ctx.stroke();
+
+  const px = Module._get_player_x();
+  const py = Module._get_player_y();
+  drawPlayer(px, py);
+
+  const alienCount = Module._get_alien_count();
+  for (let i = 0; i < alienCount; i++) {
+    if (Module._get_alien_alive(i)) {
+      drawAlien(Module._get_alien_x(i), Module._get_alien_y(i), Module._get_alien_type(i), false);
+    }
+  }
+
+  for (let i = 0; i < MAX_BULLETS; i++) {
+    if (Module._get_bullet_active(i)) {
+      drawBullet(Module._get_bullet_x(i), Module._get_bullet_y(i), false);
+    }
+  }
+
+  for (let i = 0; i < MAX_ENEMY_BULLETS; i++) {
+    if (Module._get_enemy_bullet_active(i)) {
+      drawBullet(Module._get_enemy_bullet_x(i), Module._get_enemy_bullet_y(i), true);
+    }
+  }
+
+  drawHUD();
+
+  if (state !== 0) drawOverlay(state);
+
+  if (paused && state === 0) {
+    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+    ctx.fillRect(0, 0, SCREEN_W, SCREEN_H);
+    ctx.fillStyle = '#4ade80';
+    ctx.font = 'bold 40px Courier New';
+    ctx.textAlign = 'center';
+    ctx.fillText('PAUSED', SCREEN_W / 2, SCREEN_H / 2);
+    ctx.font = '18px Courier New';
+    ctx.fillText('Press P to resume', SCREEN_W / 2, SCREEN_H / 2 + 30);
+  }
+
+  requestAnimationFrame(gameLoop);
+}
+
+document.addEventListener('keydown', (e) => {
+  switch(e.code) {
+    case 'ArrowLeft':
+    case 'KeyA': Module._move_left(); e.preventDefault(); break;
+    case 'ArrowRight':
+    case 'KeyD': Module._move_right(); e.preventDefault(); break;
+    case 'Space': Module._shoot(); e.preventDefault(); break;
+    case 'KeyR': initGame(); paused = false; e.preventDefault(); break;
+    case 'KeyP': paused = !paused; e.preventDefault(); break;
+  }
+});
+</script>
+<script src="space_invaders.js"></script>
+</body>
+</html>
